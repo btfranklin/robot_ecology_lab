@@ -78,6 +78,13 @@ const colors = {
   grid: "rgba(255,255,255,0.08)",
 };
 
+const classHues = {
+  Scout: 175,
+  Prospector: 42,
+  Gladiator: 6,
+  Cipher: 220,
+};
+
 const presets = {
   balanced: {
     name: "Balanced frontier",
@@ -1062,6 +1069,12 @@ function getArchetype(robot) {
   return scores[0].label;
 }
 
+function getClassColor(label, fitnessRatio, energyRatio) {
+  const hue = classHues[label] ?? 180;
+  const lightness = 38 + fitnessRatio * 18 + energyRatio * 10;
+  return `hsl(${hue}, 70%, ${lightness}%)`;
+}
+
 function drawRobotPortrait(target, robot) {
   const context = target.getContext("2d");
   const width = target.width;
@@ -1287,9 +1300,9 @@ function renderWorld() {
       if (!robot) continue;
 
       const fitnessNorm = clamp(robot.fitness / maxFitness, 0, 1);
-      const hue = 190 - fitnessNorm * 150;
-      const fill = `hsl(${hue}, 70%, 55%)`;
       const energyRatio = clamp(robot.energy / robot.stats.maxEnergy, 0, 1);
+      const archetype = getArchetype(robot);
+      const fill = getClassColor(archetype, fitnessNorm, energyRatio);
 
       const cx = x * cellSize + cellSize / 2;
       const cy = y * cellSize + cellSize / 2;
@@ -1429,17 +1442,21 @@ function drawLegendGlyphs() {
       context.fillRect(0, 0, size, size);
       const cx = size / 2;
       const cy = size / 2;
-      context.beginPath();
-      context.arc(cx, cy, size * 0.26, 0, Math.PI * 2);
-      context.fillStyle = "hsl(120, 70%, 55%)";
-      context.fill();
-      context.strokeStyle = "rgba(255,255,255,0.7)";
-      context.lineWidth = 1;
-      context.stroke();
-      context.beginPath();
-      context.arc(cx, cy, size * 0.36, 0, Math.PI * 2);
-      context.strokeStyle = "rgba(61,218,215,0.5)";
-      context.stroke();
+      const dots = [
+        { x: cx - 4, y: cy - 4, label: "Scout" },
+        { x: cx + 4, y: cy - 4, label: "Prospector" },
+        { x: cx - 4, y: cy + 4, label: "Gladiator" },
+        { x: cx + 4, y: cy + 4, label: "Cipher" },
+      ];
+      dots.forEach((dot) => {
+        context.beginPath();
+        context.arc(dot.x, dot.y, 2.6, 0, Math.PI * 2);
+        context.fillStyle = getClassColor(dot.label, 0.6, 0.6);
+        context.fill();
+        context.strokeStyle = "rgba(255,255,255,0.7)";
+        context.lineWidth = 0.6;
+        context.stroke();
+      });
       return;
     }
 
