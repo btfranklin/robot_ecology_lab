@@ -60,6 +60,7 @@ const state = {
   seed: "",
   world: [],
   master: { x: 0, y: 0 },
+  resourceCaps: { ore: 1, scrap: 1 },
   stats: { population: 0, avgFitness: 0, peakFitness: 0 },
   history: { population: [], avg: [], peak: [] },
   historyLimit: 220,
@@ -241,6 +242,12 @@ const directions = [
   [-1, 0],
 ];
 
+function hash2(x, y) {
+  let n = x * 374761393 + y * 668265263;
+  n = (n ^ (n >> 13)) * 1274126177;
+  return ((n ^ (n >> 16)) >>> 0) / 4294967295;
+}
+
 const geneLabels = [
   "Frame density",
   "Actuators",
@@ -310,6 +317,104 @@ function getPreset() {
   return presets[config.presetId] || presets.balanced;
 }
 
+function decideAction(robot, x, y, preset) {
+  const energyRatio = robot.energy / robot.stats.maxEnergy;
+  const hunger = 1 - energyRatio;
+  const candidates = [];
+
+  const restScore = 0.25 + hunger * 0.8 + (robot.stats.stealth / 1200);
+  candidates.push({ type: "rest", score: restScore, x, y });
+
+  const memoryPenalty = (tx, ty) => {
+    if (!robot.memory || robot.memory.length === 0) return 0;
+    let penalty = 0;
+    robot.memory.forEach((entry, index) => {
+      if (entry.x === tx && entry.y === ty) {
+        penalty += index === 0 ? 0.45 : 0.25;
+      }
+    });
+    return penalty;
+  };
+
+  for (const [dx, dy] of directions) {
+    const tx = x + dx;
+    const ty = y + dy;
+    if (tx < 0 || ty < 0 || tx >= config.width || ty >= config.height) continue;
+    const cell = state.world[ty][tx];
+
+    let score = (state.rng() - 0.5) * 0.2;
+    const movePenalty =
+      (robot.stats.moveCost * (preset.moveCostMultiplier[cell.type] || 1)) /
+      (robot.stats.maxEnergy * 1.4);
+    score -= movePenalty;
+    score -= memoryPenalty(tx, ty);
+
+    const novelty = 1 / (1 + cell.visits);
+    score += novelty * 0.25;
+
+    if (cell.type === "field") {
+      score += (preset.fieldCharge || 0) * (0.8 + hunger * 1.4);
+    }
+
+    if (cell.type === "hill" && cell.ore > 0) {
+      score += (robot.stats.mining / 900) * (0.6 + hunger);
+    }
+
+    if (cell.type === "building" && cell.scrap > 0) {
+      score += ((robot.stats.dexterity + robot.stats.sensors) / 1200) * (0.6 + hunger);
+    }
+
+    if (cell.type === "master") {
+      score += clamp((robot.stats.interface - cell.coolData) / 1200, 0, 1) * (0.4 + hunger * 0.6);
+    }
+
+    if (cell.robot) {
+      const other = cell.robot;
+      const combatEdge = (robot.stats.combat - other.stats.combat) / 1200;
+      let mateAffinity = clamp(0.4 + energyRatio * 0.6 - robot.stats.combat / 1400, 0, 1);
+      let attackAffinity = clamp(0.3 + robot.stats.combat / 1000 + combatEdge, 0, 1);
+
+      const distance = geneDistance(robot, other);
+      const diversityBoost = clamp(1 - Math.abs(distance - 0.45) * 1.6, 0.2, 1.2);
+      mateAffinity *= diversityBoost;
+
+      if (robot.energy < robot.stats.mateCost || other.energy < other.stats.mateCost) mateAffinity -= 0.5;
+      if (robot.energy < robot.stats.combatCost) attackAffinity -= 0.6;
+
+      const bestAffinity = Math.max(mateAffinity, attackAffinity);
+      score += bestAffinity * 0.45;
+
+      let action = "avoid";
+      if (mateAffinity >= attackAffinity && mateAffinity > 0) action = "mate";
+      if (attackAffinity > mateAffinity && attackAffinity > 0) action = "attack";
+
+      if (action === "avoid") score -= 0.4;
+      candidates.push({ type: action, score, x: tx, y: ty });
+    } else {
+      candidates.push({ type: "move", score, x: tx, y: ty });
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  const top = candidates.slice(0, 3);
+  const weights = top.map((entry) => Math.max(0.05, entry.score + 1.2));
+  const weightSum = weights.reduce((sum, value) => sum + value, 0);
+  let roll = state.rng() * weightSum;
+  for (let i = 0; i < top.length; i += 1) {
+    roll -= weights[i];
+    if (roll <= 0) return top[i];
+  }
+  return top[0];
+}
+
+function geneDistance(one, two) {
+  let sum = 0;
+  for (let i = 0; i < one.gene.length; i += 1) {
+    sum += Math.abs(one.gene[i] - two.gene[i]) / 255;
+  }
+  return sum / one.gene.length;
+}
+
 function computeStats(robot) {
   const g = robot.gene;
   const processing = Math.floor((g[5] + g[6]) / 2);
@@ -374,6 +479,13 @@ function randomName() {
   return letters.join("");
 }
 
+function recordMove(robot, x, y) {
+  if (!robot.memory) robot.memory = [];
+  robot.memory.unshift({ x, y });
+  if (robot.memory.length > 6) robot.memory.pop();
+  robot.lastPos = { x, y };
+}
+
 function buildNewRobot() {
   const gene = Array.from({ length: 16 }, () => randomGene());
   const robot = {
@@ -386,6 +498,8 @@ function buildNewRobot() {
     fitness: 0,
     stats: {},
     energy: 0,
+    memory: [],
+    lastPos: null,
   };
   computeStats(robot);
   robot.energy = robot.stats.maxEnergy;
@@ -410,6 +524,8 @@ function buildChildRobot(parentA, parentB) {
     fitness: 0,
     stats: {},
     energy: 0,
+    memory: [],
+    lastPos: null,
   };
   computeStats(robot);
   robot.energy = robot.stats.maxEnergy;
@@ -420,6 +536,10 @@ function createWorld() {
   const world = [];
   const preset = getPreset();
   const totalWeight = preset.terrain.field + preset.terrain.hill + preset.terrain.building;
+  state.resourceCaps = {
+    ore: Math.max(1, preset.hillOre[1]),
+    scrap: Math.max(1, preset.buildingScrap[1]),
+  };
   for (let y = 0; y < config.height; y += 1) {
     const row = [];
     for (let x = 0; x < config.width; x += 1) {
@@ -450,6 +570,7 @@ function createWorld() {
       if (randInt(100) < config.density) {
         cell.robot = buildNewRobot();
         cell.visits += 1;
+        recordMove(cell.robot, x, y);
       }
 
       row.push(cell);
@@ -616,29 +737,33 @@ function stepSimulation() {
       addSignal(pos.x, pos.y, "rgba(61,218,215,0.9)");
     }
 
-    const [dx, dy] = randomDirection();
-    const tx = pos.x + dx;
-    const ty = pos.y + dy;
-    if (tx < 0 || ty < 0 || tx >= config.width || ty >= config.height) {
+    const decision = decideAction(robot, pos.x, pos.y, preset);
+
+    if (decision.type === "rest") {
+      let restBoost = robot.stats.regen * 0.4;
+      if (cell.type === "building") restBoost *= 1.4;
+      if (cell.type === "field" && preset.fieldCharge) restBoost += preset.fieldCharge * 0.5;
+      robot.energy = clamp(robot.energy + restBoost, 0, robot.stats.maxEnergy);
       continue;
     }
 
+    const tx = decision.x;
+    const ty = decision.y;
     const targetCell = state.world[ty][tx];
 
-    if (!targetCell.robot) {
-      const moveMultiplier = preset.moveCostMultiplier[targetCell.type] || 1;
-      robot.energy -= (robot.stats.moveCost * moveMultiplier) / robot.stats.efficiency;
-      if (robot.energy <= 0) {
-        addLog(`${robot.name}-${robot.number} shut down (power).`);
-        cell.robot = null;
+      if (decision.type === "move") {
+        const moveMultiplier = preset.moveCostMultiplier[targetCell.type] || 1;
+        robot.energy -= (robot.stats.moveCost * moveMultiplier) / robot.stats.efficiency;
+        if (robot.energy <= 0) {
+          addLog(`${robot.name}-${robot.number} shut down (power).`);
+          cell.robot = null;
+          continue;
+        }
+        moveRobot(pos.x, pos.y, tx, ty, robot);
         continue;
       }
-      moveRobot(pos.x, pos.y, tx, ty, robot);
-      continue;
-    }
 
-    const desire = randInt(2); // 0 mate, 1 attack
-    if (desire === 0) {
+    if (decision.type === "mate") {
       const mateMultiplier = preset.actionCostMultiplier[cell.type] || 1;
       if (robot.energy < robot.stats.mateCost || targetCell.robot.energy < targetCell.robot.stats.mateCost) continue;
       const spot = findEmptyCell();
@@ -663,7 +788,7 @@ function stepSimulation() {
         addLog(`${child.name}-${child.number} born (Mark ${child.mark}).`);
         addSignal(spot.x, spot.y, "rgba(124,159,124,0.8)");
       }
-    } else {
+    } else if (decision.type === "attack") {
       const combatMultiplier = preset.actionCostMultiplier[cell.type] || 1;
       if (robot.energy < robot.stats.combatCost) continue;
       const outcome = combat(robot, targetCell.robot);
@@ -694,6 +819,8 @@ function stepSimulation() {
         state.world[pos.y][pos.x].robot = null;
         addSignal(tx, ty, "rgba(255,160,80,0.7)");
       }
+    } else {
+      robot.energy = clamp(robot.energy + robot.stats.regen * 0.2, 0, robot.stats.maxEnergy);
     }
   }
 
@@ -802,6 +929,7 @@ function moveRobot(fromX, fromY, toX, toY, robot) {
   toCell.robot = newcomer;
   fromCell.robot = null;
   toCell.visits += 1;
+  recordMove(newcomer, toX, toY);
 }
 
 function findEmptyCell() {
@@ -1101,6 +1229,23 @@ function renderWorld() {
       const cell = state.world[y][x];
       ctx.fillStyle = colors[cell.type];
       ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+      const noise = hash2(x, y) - 0.5;
+      if (noise > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${0.06 * noise})`;
+      } else {
+        ctx.fillStyle = `rgba(0,0,0,${0.08 * Math.abs(noise)})`;
+      }
+      ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+      if (cell.type === "hill" && state.resourceCaps.ore > 0) {
+        const richness = clamp(cell.ore / state.resourceCaps.ore, 0, 1);
+        ctx.fillStyle = `rgba(255,210,120,${0.06 + richness * 0.18})`;
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+      }
+      if (cell.type === "building" && state.resourceCaps.scrap > 0) {
+        const richness = clamp(cell.scrap / state.resourceCaps.scrap, 0, 1);
+        ctx.fillStyle = `rgba(124,159,124,${0.04 + richness * 0.16})`;
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+      }
       if (cell.type === "master") {
         ctx.strokeStyle = "rgba(255,255,255,0.4)";
         ctx.lineWidth = 1.5;
@@ -1144,10 +1289,16 @@ function renderWorld() {
       const fitnessNorm = clamp(robot.fitness / maxFitness, 0, 1);
       const hue = 190 - fitnessNorm * 150;
       const fill = `hsl(${hue}, 70%, 55%)`;
+      const energyRatio = clamp(robot.energy / robot.stats.maxEnergy, 0, 1);
 
       const cx = x * cellSize + cellSize / 2;
       const cy = y * cellSize + cellSize / 2;
       const radius = cellSize * 0.32;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius + 2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${0.05 + energyRatio * 0.25})`;
+      ctx.fill();
 
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -1156,6 +1307,12 @@ function renderWorld() {
 
       ctx.strokeStyle = "rgba(255,255,255,0.6)";
       ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius + 5, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(61,218,215,${0.1 + energyRatio * 0.5})`;
+      ctx.lineWidth = 1;
       ctx.stroke();
 
       if (state.selected && state.selected.robot.id === robot.id) {
@@ -1187,53 +1344,112 @@ function renderWorld() {
 
 function drawTileGlyphs(cellSize) {
   ctx.save();
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.3;
 
   for (let y = 0; y < config.height; y += 1) {
     for (let x = 0; x < config.width; x += 1) {
       const cell = state.world[y][x];
       const cx = x * cellSize + cellSize / 2;
       const cy = y * cellSize + cellSize / 2;
-
-      if (cell.type === "field") {
-        ctx.fillStyle = "rgba(255,255,255,0.18)";
-        ctx.beginPath();
-        ctx.arc(cx, cy, cellSize * 0.08, 0, Math.PI * 2);
-        ctx.fill();
-        continue;
-      }
-
-      if (cell.type === "hill") {
-        ctx.strokeStyle = "rgba(255,255,255,0.25)";
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - cellSize * 0.22);
-        ctx.lineTo(cx - cellSize * 0.2, cy + cellSize * 0.18);
-        ctx.lineTo(cx + cellSize * 0.2, cy + cellSize * 0.18);
-        ctx.closePath();
-        ctx.stroke();
-        continue;
-      }
-
-      if (cell.type === "building") {
-        ctx.strokeStyle = "rgba(255,255,255,0.3)";
-        ctx.strokeRect(
-          cx - cellSize * 0.18,
-          cy - cellSize * 0.2,
-          cellSize * 0.36,
-          cellSize * 0.4
-        );
-        ctx.strokeRect(
-          cx - cellSize * 0.1,
-          cy - cellSize * 0.12,
-          cellSize * 0.2,
-          cellSize * 0.24
-        );
-        continue;
-      }
+      drawTileGlyph(ctx, cell.type, cx, cy, cellSize, {
+        oreRich: cell.ore > 80,
+        scrapRich: cell.scrap > 60,
+      });
     }
   }
 
   ctx.restore();
+}
+
+function drawTileGlyph(context, type, cx, cy, size, options = {}) {
+  const oreRich = Boolean(options.oreRich);
+  const scrapRich = Boolean(options.scrapRich);
+  if (type === "field") {
+    context.strokeStyle = "rgba(255,255,255,0.25)";
+    context.beginPath();
+    context.moveTo(cx - size * 0.12, cy + size * 0.12);
+    context.lineTo(cx - size * 0.02, cy - size * 0.1);
+    context.lineTo(cx + size * 0.08, cy + size * 0.12);
+    context.stroke();
+    return;
+  }
+
+  if (type === "hill") {
+    context.strokeStyle = "rgba(255,255,255,0.35)";
+    context.beginPath();
+    context.moveTo(cx, cy - size * 0.22);
+    context.lineTo(cx - size * 0.2, cy + size * 0.18);
+    context.lineTo(cx + size * 0.2, cy + size * 0.18);
+    context.closePath();
+    context.stroke();
+    if (oreRich) {
+      context.fillStyle = "rgba(255,210,120,0.7)";
+      context.beginPath();
+      context.arc(cx + size * 0.12, cy - size * 0.04, size * 0.06, 0, Math.PI * 2);
+      context.fill();
+    }
+    return;
+  }
+
+  if (type === "building") {
+    context.strokeStyle = "rgba(255,255,255,0.45)";
+    context.strokeRect(cx - size * 0.18, cy - size * 0.2, size * 0.36, size * 0.4);
+    context.strokeRect(cx - size * 0.1, cy - size * 0.12, size * 0.2, size * 0.24);
+    if (scrapRich) {
+      context.fillStyle = "rgba(124,159,124,0.8)";
+      context.fillRect(cx - size * 0.14, cy + size * 0.14, size * 0.08, size * 0.08);
+    }
+    return;
+  }
+
+  if (type === "master") {
+    context.strokeStyle = "rgba(255,255,255,0.6)";
+    context.beginPath();
+    context.arc(cx, cy, size * 0.18, 0, Math.PI * 2);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(cx - size * 0.14, cy);
+    context.lineTo(cx + size * 0.14, cy);
+    context.moveTo(cx, cy - size * 0.14);
+    context.lineTo(cx, cy + size * 0.14);
+    context.stroke();
+  }
+}
+
+function drawLegendGlyphs() {
+  document.querySelectorAll(".legend-canvas").forEach((canvasEl) => {
+    const type = canvasEl.dataset.glyph;
+    if (!type) return;
+    const context = canvasEl.getContext("2d");
+    const size = canvasEl.width;
+    context.clearRect(0, 0, size, size);
+
+    if (type === "robot") {
+      context.fillStyle = colors.field;
+      context.fillRect(0, 0, size, size);
+      const cx = size / 2;
+      const cy = size / 2;
+      context.beginPath();
+      context.arc(cx, cy, size * 0.26, 0, Math.PI * 2);
+      context.fillStyle = "hsl(120, 70%, 55%)";
+      context.fill();
+      context.strokeStyle = "rgba(255,255,255,0.7)";
+      context.lineWidth = 1;
+      context.stroke();
+      context.beginPath();
+      context.arc(cx, cy, size * 0.36, 0, Math.PI * 2);
+      context.strokeStyle = "rgba(61,218,215,0.5)";
+      context.stroke();
+      return;
+    }
+
+    context.fillStyle = colors[type] || "#222";
+    context.fillRect(0, 0, size, size);
+    drawTileGlyph(context, type, size / 2, size / 2, size, {
+      oreRich: type === "hill",
+      scrapRich: type === "building",
+    });
+  });
 }
 
 function renderChart() {
@@ -1430,6 +1646,7 @@ function init() {
   syncInputs();
   resetSimulation();
   wireEvents();
+  drawLegendGlyphs();
   requestAnimationFrame(tick);
 }
 

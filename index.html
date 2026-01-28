@@ -54,11 +54,36 @@
         <div id="legend" class="popover" popover>
           <h3>Legend</h3>
           <ul>
-            <li><span class="swatch field"></span>Field</li>
-            <li><span class="swatch hill"></span>Hill (mining)</li>
-            <li><span class="swatch building"></span>Building</li>
-            <li><span class="swatch master"></span>Master Computer</li>
-            <li><span class="swatch robot"></span>Robot (color = fitness)</li>
+            <li>
+              <span class="swatch field">
+                <canvas class="legend-canvas" data-glyph="field" width="20" height="20"></canvas>
+              </span>
+              Field
+            </li>
+            <li>
+              <span class="swatch hill">
+                <canvas class="legend-canvas" data-glyph="hill" width="20" height="20"></canvas>
+              </span>
+              Hill (mining)
+            </li>
+            <li>
+              <span class="swatch building">
+                <canvas class="legend-canvas" data-glyph="building" width="20" height="20"></canvas>
+              </span>
+              Building (scrap)
+            </li>
+            <li>
+              <span class="swatch master">
+                <canvas class="legend-canvas" data-glyph="master" width="20" height="20"></canvas>
+              </span>
+              Master Computer
+            </li>
+            <li>
+              <span class="swatch robot">
+                <canvas class="legend-canvas" data-glyph="robot" width="20" height="20"></canvas>
+              </span>
+              Robot (color = fitness)
+            </li>
           </ul>
         </div>
         <div id="botPopover" class="popover bot-popover" popover>
