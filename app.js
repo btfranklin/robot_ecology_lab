@@ -23,6 +23,8 @@ const densityOut = document.getElementById("densityOut");
 const seedInput = document.getElementById("seed");
 const worldPresetSelect = document.getElementById("worldPreset");
 const worldPresetDesc = document.getElementById("worldPresetDesc");
+const masterCountInput = document.getElementById("masterCount");
+const masterCountOut = document.getElementById("masterCountOut");
 
 const showGridInput = document.getElementById("showGrid");
 const showSignalsInput = document.getElementById("showSignals");
@@ -48,6 +50,7 @@ const config = {
   maxAge: 100,
   density: 5,
   presetId: "balanced",
+  masterCount: 1,
 };
 
 const state = {
@@ -79,6 +82,7 @@ const presets = {
     name: "Balanced frontier",
     description: "Mixed terrain with moderate resources and neutral climate.",
     terrain: { field: 50, hill: 30, building: 20 },
+    masterCount: 1,
     hillOre: [60, 220],
     buildingScrap: [5, 50],
     fieldCharge: 0.2,
@@ -93,6 +97,7 @@ const presets = {
     name: "Ruined city",
     description: "Dense buildings, limited hills, and plenty of salvage.",
     terrain: { field: 20, hill: 10, building: 70 },
+    masterCount: 2,
     hillOre: [20, 80],
     buildingScrap: [60, 180],
     fieldCharge: 0.1,
@@ -107,6 +112,7 @@ const presets = {
     name: "Barren mountainscape",
     description: "Mostly hills, thin resources, and taxing climbs.",
     terrain: { field: 15, hill: 70, building: 15 },
+    masterCount: 1,
     hillOre: [10, 70],
     buildingScrap: [0, 20],
     fieldCharge: 0.05,
@@ -121,6 +127,7 @@ const presets = {
     name: "Crystal canyons",
     description: "High hills with rich ore veins but brutal traversal.",
     terrain: { field: 20, hill: 60, building: 20 },
+    masterCount: 2,
     hillOre: [120, 320],
     buildingScrap: [10, 60],
     fieldCharge: 0.1,
@@ -135,6 +142,7 @@ const presets = {
     name: "Industrial wasteland",
     description: "Scrap-rich buildings, corrosive air, and heavy upkeep.",
     terrain: { field: 30, hill: 15, building: 55 },
+    masterCount: 2,
     hillOre: [20, 80],
     buildingScrap: [80, 220],
     fieldCharge: 0.05,
@@ -149,6 +157,7 @@ const presets = {
     name: "Verdant basin",
     description: "Open fields that recharge bots quickly with gentle terrain.",
     terrain: { field: 75, hill: 15, building: 10 },
+    masterCount: 1,
     hillOre: [40, 120],
     buildingScrap: [0, 30],
     fieldCharge: 0.6,
@@ -163,6 +172,7 @@ const presets = {
     name: "Solar array",
     description: "Bright fields reward efficiency; buildings are rare.",
     terrain: { field: 85, hill: 10, building: 5 },
+    masterCount: 3,
     hillOre: [30, 90],
     buildingScrap: [0, 10],
     fieldCharge: 1.0,
@@ -177,6 +187,7 @@ const presets = {
     name: "Frozen wastes",
     description: "Energy drains faster; only the lean survive.",
     terrain: { field: 55, hill: 30, building: 15 },
+    masterCount: 1,
     hillOre: [20, 90],
     buildingScrap: [10, 40],
     fieldCharge: 0,
@@ -191,6 +202,7 @@ const presets = {
     name: "Storm belt",
     description: "Wild power swings; adaptability is king.",
     terrain: { field: 45, hill: 25, building: 30 },
+    masterCount: 2,
     hillOre: [40, 160],
     buildingScrap: [30, 90],
     fieldCharge: 0.2,
@@ -205,6 +217,7 @@ const presets = {
     name: "Labyrinth ruins",
     description: "Dense obstacles and narrow paths, low resources.",
     terrain: { field: 25, hill: 10, building: 65 },
+    masterCount: 3,
     hillOre: [10, 60],
     buildingScrap: [20, 70],
     fieldCharge: 0.05,
@@ -444,14 +457,31 @@ function createWorld() {
     world.push(row);
   }
 
-  const masterX = randInt(config.width);
-  const masterY = randInt(config.height);
-  world[masterY][masterX].type = "master";
-  world[masterY][masterX].coolData = 0;
-  world[masterY][masterX].ore = 0;
-  world[masterY][masterX].scrap = 0;
-  state.master = { x: masterX, y: masterY };
-  masterPos.textContent = `${masterX},${masterY}`;
+  const masterCount = clamp(config.masterCount || preset.masterCount || 1, 1, config.width * config.height);
+  const masters = [];
+  let attempts = 0;
+  while (masters.length < masterCount && attempts < masterCount * 20) {
+    const mx = randInt(config.width);
+    const my = randInt(config.height);
+    const exists = masters.some((entry) => entry.x === mx && entry.y === my);
+    if (exists) {
+      attempts += 1;
+      continue;
+    }
+    const cell = world[my][mx];
+    cell.type = "master";
+    cell.coolData = 0;
+    cell.ore = 0;
+    cell.scrap = 0;
+    masters.push({ x: mx, y: my });
+    attempts += 1;
+  }
+  state.master = masters;
+  const summary = masters
+    .slice(0, 4)
+    .map((entry) => `${entry.x},${entry.y}`)
+    .join(" | ");
+  masterPos.textContent = `${masters.length} @ ${summary}${masters.length > 4 ? " | ..." : ""}`;
 
   return world;
 }
@@ -1049,7 +1079,7 @@ function populatePresets() {
 
 function updatePresetDescription() {
   const preset = getPreset();
-  worldPresetDesc.textContent = preset.description;
+  worldPresetDesc.textContent = `${preset.description} Masters: ${preset.masterCount || 1}.`;
 }
 
 function resizeCanvas(target, context) {
@@ -1296,6 +1326,8 @@ function syncInputs() {
   densityInput.value = String(config.density);
   densityOut.textContent = String(config.density);
   worldPresetSelect.value = config.presetId;
+  masterCountInput.value = String(config.masterCount);
+  masterCountOut.textContent = String(config.masterCount);
 }
 
 function wireEvents() {
@@ -1334,9 +1366,17 @@ function wireEvents() {
     densityOut.textContent = event.target.value;
   });
 
+  masterCountInput.addEventListener("input", (event) => {
+    config.masterCount = Number(event.target.value);
+    masterCountOut.textContent = event.target.value;
+  });
+
   worldPresetSelect.addEventListener("change", (event) => {
     config.presetId = event.target.value;
+    const preset = getPreset();
+    config.masterCount = preset.masterCount || 1;
     updatePresetDescription();
+    syncInputs();
     stopSimulation();
     resetSimulation();
   });
