@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Robot Ecology Lab</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <p class="eyebrow">Laboratory Simulation</p>
+      <h1>Robot Ecology Lab</h1>
+      <p class="subtitle">Genetic chaos in a 50x50 world, now visible.</p>
+    </div>
+
+    <div class="controls" role="group" aria-label="Simulation controls">
+      <button class="btn primary" id="toggleRun" type="button">Start</button>
+      <button class="btn" id="step" type="button">Step</button>
+      <button class="btn" id="reset" type="button">Reset</button>
+      <button class="btn" id="randomize" type="button">New seed</button>
+      <button class="btn ghost" id="helpBtn" type="button">How it works</button>
+    </div>
+
+    <div class="metrics" aria-live="polite">
+      <div class="metric">
+        <span class="label">Cycle</span>
+        <output id="cycle">0</output>
+      </div>
+      <div class="metric">
+        <span class="label">Population</span>
+        <output id="population">0</output>
+      </div>
+      <div class="metric">
+        <span class="label">Avg fitness</span>
+        <output id="avgFitness">0</output>
+      </div>
+      <div class="metric">
+        <span class="label">Peak fitness</span>
+        <output id="peakFitness">0</output>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="sim-panel">
+      <div class="canvas-wrap">
+        <canvas id="world" role="img" aria-label="Robot world simulation"></canvas>
+        <div class="hud">
+          <div class="chip">Master @ <span id="masterPos">--</span></div>
+          <button class="btn tiny" popovertarget="legend" type="button">Legend</button>
+          <button class="btn tiny" id="centerView" type="button">Center</button>
+        </div>
+        <div id="legend" class="popover" popover>
+          <h3>Legend</h3>
+          <ul>
+            <li><span class="swatch field"></span>Field</li>
+            <li><span class="swatch hill"></span>Hill (mining)</li>
+            <li><span class="swatch building"></span>Building</li>
+            <li><span class="swatch master"></span>Master Computer</li>
+            <li><span class="swatch robot"></span>Robot (color = fitness)</li>
+          </ul>
+        </div>
+        <div id="botPopover" class="popover bot-popover" popover>
+          <p class="bot-title" id="botPopoverTitle">Robot</p>
+          <p class="bot-sub" id="botPopoverSub">--</p>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <details class="card" open>
+        <summary>Simulation settings</summary>
+        <div class="card-body">
+          <div class="field">
+            <label for="speed">Speed</label>
+            <div class="range-row">
+              <input id="speed" type="range" min="1" max="60" value="12" />
+              <output id="speedOut">12</output>
+              <span class="unit">steps/s</span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="maxAge">Max age</label>
+            <div class="range-row">
+              <input id="maxAge" type="range" min="40" max="200" value="100" />
+              <output id="maxAgeOut">100</output>
+              <span class="unit">cycles</span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="density">Initial density</label>
+            <div class="range-row">
+              <input id="density" type="range" min="1" max="30" value="5" />
+              <output id="densityOut">5</output>
+              <span class="unit">%</span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="seed">Seed</label>
+            <div class="seed-row">
+              <input id="seed" type="text" spellcheck="false" autocomplete="off" />
+              <button class="btn tiny" id="applySeed" type="button">Apply</button>
+            </div>
+          </div>
+          <fieldset class="toggles">
+            <legend>Visual overlays</legend>
+            <label class="toggle"><input type="checkbox" id="showGrid" checked /> Grid</label>
+            <label class="toggle"><input type="checkbox" id="showTrails" checked /> Trails</label>
+            <label class="toggle"><input type="checkbox" id="showSignals" checked /> Signals</label>
+          </fieldset>
+        </div>
+      </details>
+
+      <details class="card" open>
+        <summary>Population analytics</summary>
+        <div class="card-body">
+          <canvas id="chart" aria-label="Population and fitness chart"></canvas>
+          <div class="meters">
+            <div>
+              <label for="popMeter">Population</label>
+              <meter id="popMeter" min="0" max="2500" value="0"></meter>
+            </div>
+            <div>
+              <label for="fitnessMeter">Average fitness</label>
+              <meter id="fitnessMeter" min="0" max="2000" value="0"></meter>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="card" open>
+        <summary>Selected robot</summary>
+        <div class="card-body" id="robotDetails">
+          <p class="muted">Click a robot in the world to inspect its build.</p>
+        </div>
+      </details>
+
+      <details class="card" open>
+        <summary>Event log</summary>
+        <div class="card-body">
+          <ol id="log" class="log"></ol>
+        </div>
+      </details>
+    </aside>
+  </main>
+
+  <dialog id="help">
+    <div class="dialog-head">
+      <h2>How it works</h2>
+      <button class="btn ghost" id="closeHelp" type="button">Close</button>
+    </div>
+    <div class="dialog-body">
+      <p>
+        Robots roam a 50x50 grid. Each robot has 16 genes that determine its sensing,
+        combat, and mobility stats. Hills can be mined for fitness boosts, and the Master
+        Computer upgrades compatible robots while deleting the rest.
+      </p>
+      <ul>
+        <li>Move: random neighboring cell, unless occupied.</li>
+        <li>Mate or attack: if a robot is in the target cell.</li>
+        <li>Combat rewards fitness; mining yields steady gains.</li>
+        <li>Robots shut down after hitting max age.</li>
+      </ul>
+      <p>
+        Use the overlays to spot trails, mining hotspots, and combat flashes. Clicking a
+        robot reveals its genes and derived stats.
+      </p>
+    </div>
+  </dialog>
+
+  <div id="ariaStatus" class="sr-only" aria-live="polite"></div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
