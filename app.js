@@ -21,9 +21,10 @@ const maxAgeOut = document.getElementById("maxAgeOut");
 const densityInput = document.getElementById("density");
 const densityOut = document.getElementById("densityOut");
 const seedInput = document.getElementById("seed");
+const worldPresetSelect = document.getElementById("worldPreset");
+const worldPresetDesc = document.getElementById("worldPresetDesc");
 
 const showGridInput = document.getElementById("showGrid");
-const showTrailsInput = document.getElementById("showTrails");
 const showSignalsInput = document.getElementById("showSignals");
 
 const toggleRunBtn = document.getElementById("toggleRun");
@@ -46,6 +47,7 @@ const config = {
   speed: 12,
   maxAge: 100,
   density: 5,
+  presetId: "balanced",
 };
 
 const state = {
@@ -58,7 +60,7 @@ const state = {
   stats: { population: 0, avgFitness: 0, peakFitness: 0 },
   history: { population: [], avg: [], peak: [] },
   historyLimit: 220,
-  visual: { grid: true, trails: true, signals: true },
+  visual: { grid: true, signals: true },
   selected: null,
   events: [],
   log: [],
@@ -70,7 +72,149 @@ const colors = {
   building: "#4c4c4c",
   master: "#1f6f8b",
   grid: "rgba(255,255,255,0.08)",
-  trail: "rgba(61, 218, 215, 0.35)",
+};
+
+const presets = {
+  balanced: {
+    name: "Balanced frontier",
+    description: "Mixed terrain with moderate resources and neutral climate.",
+    terrain: { field: 50, hill: 30, building: 20 },
+    hillOre: [60, 220],
+    buildingScrap: [5, 50],
+    fieldCharge: 0.2,
+    energyDelta: 0,
+    energyVariance: 0,
+    regenMultiplier: 1,
+    upkeepMultiplier: 1,
+    moveCostMultiplier: { field: 1, hill: 1.15, building: 1.05 },
+    actionCostMultiplier: { field: 1, hill: 1.05, building: 1.1 },
+  },
+  "ruined-city": {
+    name: "Ruined city",
+    description: "Dense buildings, limited hills, and plenty of salvage.",
+    terrain: { field: 20, hill: 10, building: 70 },
+    hillOre: [20, 80],
+    buildingScrap: [60, 180],
+    fieldCharge: 0.1,
+    energyDelta: -0.1,
+    energyVariance: 0.1,
+    regenMultiplier: 1,
+    upkeepMultiplier: 1.05,
+    moveCostMultiplier: { field: 1.1, hill: 1.2, building: 1.3 },
+    actionCostMultiplier: { field: 1.1, hill: 1.1, building: 1.2 },
+  },
+  "barren-mountains": {
+    name: "Barren mountainscape",
+    description: "Mostly hills, thin resources, and taxing climbs.",
+    terrain: { field: 15, hill: 70, building: 15 },
+    hillOre: [10, 70],
+    buildingScrap: [0, 20],
+    fieldCharge: 0.05,
+    energyDelta: -0.25,
+    energyVariance: 0.15,
+    regenMultiplier: 0.9,
+    upkeepMultiplier: 1.1,
+    moveCostMultiplier: { field: 1.2, hill: 1.5, building: 1.2 },
+    actionCostMultiplier: { field: 1.1, hill: 1.2, building: 1.1 },
+  },
+  "crystal-canyons": {
+    name: "Crystal canyons",
+    description: "High hills with rich ore veins but brutal traversal.",
+    terrain: { field: 20, hill: 60, building: 20 },
+    hillOre: [120, 320],
+    buildingScrap: [10, 60],
+    fieldCharge: 0.1,
+    energyDelta: -0.1,
+    energyVariance: 0.05,
+    regenMultiplier: 1,
+    upkeepMultiplier: 1,
+    moveCostMultiplier: { field: 1.1, hill: 1.45, building: 1.2 },
+    actionCostMultiplier: { field: 1.05, hill: 1.15, building: 1.1 },
+  },
+  "industrial-wasteland": {
+    name: "Industrial wasteland",
+    description: "Scrap-rich buildings, corrosive air, and heavy upkeep.",
+    terrain: { field: 30, hill: 15, building: 55 },
+    hillOre: [20, 80],
+    buildingScrap: [80, 220],
+    fieldCharge: 0.05,
+    energyDelta: -0.4,
+    energyVariance: 0.2,
+    regenMultiplier: 0.85,
+    upkeepMultiplier: 1.15,
+    moveCostMultiplier: { field: 1.2, hill: 1.2, building: 1.35 },
+    actionCostMultiplier: { field: 1.1, hill: 1.1, building: 1.25 },
+  },
+  "verdant-basin": {
+    name: "Verdant basin",
+    description: "Open fields that recharge bots quickly with gentle terrain.",
+    terrain: { field: 75, hill: 15, building: 10 },
+    hillOre: [40, 120],
+    buildingScrap: [0, 30],
+    fieldCharge: 0.6,
+    energyDelta: 0.1,
+    energyVariance: 0,
+    regenMultiplier: 1.2,
+    upkeepMultiplier: 0.95,
+    moveCostMultiplier: { field: 0.9, hill: 1.1, building: 1.05 },
+    actionCostMultiplier: { field: 0.95, hill: 1, building: 1 },
+  },
+  "solar-array": {
+    name: "Solar array",
+    description: "Bright fields reward efficiency; buildings are rare.",
+    terrain: { field: 85, hill: 10, building: 5 },
+    hillOre: [30, 90],
+    buildingScrap: [0, 10],
+    fieldCharge: 1.0,
+    energyDelta: 0.2,
+    energyVariance: 0.05,
+    regenMultiplier: 1.1,
+    upkeepMultiplier: 0.9,
+    moveCostMultiplier: { field: 0.85, hill: 1.1, building: 1 },
+    actionCostMultiplier: { field: 0.9, hill: 1, building: 1 },
+  },
+  "frozen-wastes": {
+    name: "Frozen wastes",
+    description: "Energy drains faster; only the lean survive.",
+    terrain: { field: 55, hill: 30, building: 15 },
+    hillOre: [20, 90],
+    buildingScrap: [10, 40],
+    fieldCharge: 0,
+    energyDelta: -0.5,
+    energyVariance: 0.1,
+    regenMultiplier: 0.75,
+    upkeepMultiplier: 1.2,
+    moveCostMultiplier: { field: 1.2, hill: 1.3, building: 1.2 },
+    actionCostMultiplier: { field: 1.1, hill: 1.2, building: 1.1 },
+  },
+  "storm-belt": {
+    name: "Storm belt",
+    description: "Wild power swings; adaptability is king.",
+    terrain: { field: 45, hill: 25, building: 30 },
+    hillOre: [40, 160],
+    buildingScrap: [30, 90],
+    fieldCharge: 0.2,
+    energyDelta: -0.2,
+    energyVariance: 0.6,
+    regenMultiplier: 1,
+    upkeepMultiplier: 1,
+    moveCostMultiplier: { field: 1.05, hill: 1.2, building: 1.1 },
+    actionCostMultiplier: { field: 1.05, hill: 1.1, building: 1.1 },
+  },
+  "labyrinth-ruins": {
+    name: "Labyrinth ruins",
+    description: "Dense obstacles and narrow paths, low resources.",
+    terrain: { field: 25, hill: 10, building: 65 },
+    hillOre: [10, 60],
+    buildingScrap: [20, 70],
+    fieldCharge: 0.05,
+    energyDelta: -0.2,
+    energyVariance: 0.1,
+    regenMultiplier: 0.95,
+    upkeepMultiplier: 1.1,
+    moveCostMultiplier: { field: 1.15, hill: 1.2, building: 1.4 },
+    actionCostMultiplier: { field: 1.1, hill: 1.1, building: 1.25 },
+  },
 };
 
 const directions = [
@@ -147,6 +291,10 @@ function setSeed(value) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function getPreset() {
+  return presets[config.presetId] || presets.balanced;
 }
 
 function computeStats(robot) {
@@ -257,13 +405,15 @@ function buildChildRobot(parentA, parentB) {
 
 function createWorld() {
   const world = [];
+  const preset = getPreset();
+  const totalWeight = preset.terrain.field + preset.terrain.hill + preset.terrain.building;
   for (let y = 0; y < config.height; y += 1) {
     const row = [];
     for (let x = 0; x < config.width; x += 1) {
-      const terrainRoll = randInt(100);
+      const terrainRoll = randInt(totalWeight);
       let type = "field";
-      if (terrainRoll < 50) type = "field";
-      else if (terrainRoll < 80) type = "hill";
+      if (terrainRoll < preset.terrain.field) type = "field";
+      else if (terrainRoll < preset.terrain.field + preset.terrain.hill) type = "hill";
       else type = "building";
 
       const cell = {
@@ -271,8 +421,18 @@ function createWorld() {
         robot: null,
         coolData: 0,
         visits: 0,
-        ore: type === "hill" ? 50 + randInt(150) : 0,
+        ore: 0,
+        scrap: 0,
       };
+
+      if (type === "hill") {
+        cell.ore = preset.hillOre[0] + randInt(preset.hillOre[1] - preset.hillOre[0] + 1);
+      }
+
+      if (type === "building") {
+        cell.scrap =
+          preset.buildingScrap[0] + randInt(preset.buildingScrap[1] - preset.buildingScrap[0] + 1);
+      }
 
       if (randInt(100) < config.density) {
         cell.robot = buildNewRobot();
@@ -289,6 +449,7 @@ function createWorld() {
   world[masterY][masterX].type = "master";
   world[masterY][masterX].coolData = 0;
   world[masterY][masterX].ore = 0;
+  world[masterY][masterX].scrap = 0;
   state.master = { x: masterX, y: masterY };
   masterPos.textContent = `${masterX},${masterY}`;
 
@@ -330,6 +491,9 @@ function toggleSimulation() {
 
 function stepSimulation() {
   state.cycle += 1;
+  const preset = getPreset();
+  const envDelta =
+    preset.energyDelta + (preset.energyVariance ? (state.rng() - 0.5) * preset.energyVariance : 0);
 
   for (let y = 0; y < config.height; y += 1) {
     for (let x = 0; x < config.width; x += 1) {
@@ -339,8 +503,15 @@ function stepSimulation() {
       const robot = cell.robot;
       robot.age += 1;
 
-      robot.energy = clamp(robot.energy + robot.stats.regen, 0, robot.stats.maxEnergy);
-      robot.energy -= robot.stats.upkeep / robot.stats.efficiency;
+      robot.energy = clamp(
+        robot.energy + robot.stats.regen * preset.regenMultiplier + envDelta,
+        0,
+        robot.stats.maxEnergy
+      );
+      if (cell.type === "field" && preset.fieldCharge) {
+        robot.energy = clamp(robot.energy + preset.fieldCharge, 0, robot.stats.maxEnergy);
+      }
+      robot.energy -= (robot.stats.upkeep * preset.upkeepMultiplier) / robot.stats.efficiency;
 
       if (robot.age > config.maxAge) {
         addLog(`${robot.name}-${robot.number} shut down (age).`);
@@ -386,14 +557,27 @@ function stepSimulation() {
         cell.ore -= yieldAmt;
         robot.fitness += 10 + yieldAmt;
         robot.energy = clamp(robot.energy + yieldAmt * 0.2, 0, robot.stats.maxEnergy);
-        robot.energy -= robot.stats.mineCost / robot.stats.efficiency;
+        robot.energy -= (robot.stats.mineCost * preset.actionCostMultiplier.hill) / robot.stats.efficiency;
         addLog(`${robot.name}-${robot.number} mined ore (+${10 + yieldAmt}).`);
         addSignal(pos.x, pos.y, "rgba(212,108,78,0.85)");
       }
     }
 
+    if (cell.type === "building" && cell.scrap > 0) {
+      const chance = clamp((robot.stats.sensors + robot.stats.dexterity) / 1400, 0, 0.65);
+      if (state.rng() < chance) {
+        const yieldAmt = Math.min(cell.scrap, 5 + Math.floor(robot.stats.dexterity / 100));
+        cell.scrap -= yieldAmt;
+        robot.fitness += 8 + yieldAmt;
+        robot.energy = clamp(robot.energy + yieldAmt * 0.15, 0, robot.stats.maxEnergy);
+        robot.energy -= (robot.stats.mineCost * preset.actionCostMultiplier.building) / robot.stats.efficiency;
+        addLog(`${robot.name}-${robot.number} scavenged scrap (+${8 + yieldAmt}).`);
+        addSignal(pos.x, pos.y, "rgba(124,159,124,0.8)");
+      }
+    }
+
     if (cell.type === "master") {
-      robot.energy -= robot.stats.mateCost / robot.stats.efficiency;
+      robot.energy -= (robot.stats.mateCost * (preset.actionCostMultiplier.master || 1)) / robot.stats.efficiency;
       const survived = confrontMaster(robot, pos.x, pos.y);
       if (!survived) {
         addSignal(pos.x, pos.y, "rgba(255,80,80,0.8)");
@@ -412,7 +596,8 @@ function stepSimulation() {
     const targetCell = state.world[ty][tx];
 
     if (!targetCell.robot) {
-      robot.energy -= robot.stats.moveCost / robot.stats.efficiency;
+      const moveMultiplier = preset.moveCostMultiplier[targetCell.type] || 1;
+      robot.energy -= (robot.stats.moveCost * moveMultiplier) / robot.stats.efficiency;
       if (robot.energy <= 0) {
         addLog(`${robot.name}-${robot.number} shut down (power).`);
         cell.robot = null;
@@ -424,11 +609,14 @@ function stepSimulation() {
 
     const desire = randInt(2); // 0 mate, 1 attack
     if (desire === 0) {
+      const mateMultiplier = preset.actionCostMultiplier[cell.type] || 1;
       if (robot.energy < robot.stats.mateCost || targetCell.robot.energy < targetCell.robot.stats.mateCost) continue;
       const spot = findEmptyCell();
       if (spot) {
-        robot.energy -= robot.stats.mateCost / robot.stats.efficiency;
-        targetCell.robot.energy -= targetCell.robot.stats.mateCost / targetCell.robot.stats.efficiency;
+        robot.energy -= (robot.stats.mateCost * mateMultiplier) / robot.stats.efficiency;
+        targetCell.robot.energy -=
+          (targetCell.robot.stats.mateCost * mateMultiplier) /
+          targetCell.robot.stats.efficiency;
         if (robot.energy <= 0) {
           addLog(`${robot.name}-${robot.number} shut down (power).`);
           cell.robot = null;
@@ -446,10 +634,13 @@ function stepSimulation() {
         addSignal(spot.x, spot.y, "rgba(124,159,124,0.8)");
       }
     } else {
+      const combatMultiplier = preset.actionCostMultiplier[cell.type] || 1;
       if (robot.energy < robot.stats.combatCost) continue;
       const outcome = combat(robot, targetCell.robot);
-      robot.energy -= robot.stats.combatCost / robot.stats.efficiency;
-      targetCell.robot.energy -= targetCell.robot.stats.combatCost * 0.6 / targetCell.robot.stats.efficiency;
+      robot.energy -= (robot.stats.combatCost * combatMultiplier) / robot.stats.efficiency;
+      targetCell.robot.energy -=
+        (targetCell.robot.stats.combatCost * 0.6 * combatMultiplier) /
+        targetCell.robot.stats.efficiency;
 
       if (robot.energy <= 0) {
         addLog(`${robot.name}-${robot.number} shut down (power).`);
@@ -846,6 +1037,21 @@ function syncSelectedRobot() {
   if (botPopover.hidePopover) botPopover.hidePopover();
 }
 
+function populatePresets() {
+  worldPresetSelect.innerHTML = "";
+  Object.entries(presets).forEach(([id, preset]) => {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = preset.name;
+    worldPresetSelect.appendChild(option);
+  });
+}
+
+function updatePresetDescription() {
+  const preset = getPreset();
+  worldPresetDesc.textContent = preset.description;
+}
+
 function resizeCanvas(target, context) {
   const rect = target.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
@@ -879,18 +1085,7 @@ function renderWorld() {
     }
   }
 
-  if (state.visual.trails) {
-    const maxVisits = Math.max(1, ...state.world.flat().map((cell) => cell.visits));
-    for (let y = 0; y < config.height; y += 1) {
-      for (let x = 0; x < config.width; x += 1) {
-        const visits = state.world[y][x].visits;
-        if (visits <= 1) continue;
-        const intensity = clamp(visits / maxVisits, 0, 1);
-        ctx.fillStyle = `rgba(61, 218, 215, ${0.1 + intensity * 0.35})`;
-        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-      }
-    }
-  }
+  drawTileGlyphs(cellSize);
 
   if (state.visual.grid) {
     ctx.strokeStyle = colors.grid;
@@ -958,6 +1153,57 @@ function renderWorld() {
     burst.ttl -= 1;
   }
   state.events = state.events.filter((burst) => burst.ttl > 0);
+}
+
+function drawTileGlyphs(cellSize) {
+  ctx.save();
+  ctx.lineWidth = 1;
+
+  for (let y = 0; y < config.height; y += 1) {
+    for (let x = 0; x < config.width; x += 1) {
+      const cell = state.world[y][x];
+      const cx = x * cellSize + cellSize / 2;
+      const cy = y * cellSize + cellSize / 2;
+
+      if (cell.type === "field") {
+        ctx.fillStyle = "rgba(255,255,255,0.18)";
+        ctx.beginPath();
+        ctx.arc(cx, cy, cellSize * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+
+      if (cell.type === "hill") {
+        ctx.strokeStyle = "rgba(255,255,255,0.25)";
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - cellSize * 0.22);
+        ctx.lineTo(cx - cellSize * 0.2, cy + cellSize * 0.18);
+        ctx.lineTo(cx + cellSize * 0.2, cy + cellSize * 0.18);
+        ctx.closePath();
+        ctx.stroke();
+        continue;
+      }
+
+      if (cell.type === "building") {
+        ctx.strokeStyle = "rgba(255,255,255,0.3)";
+        ctx.strokeRect(
+          cx - cellSize * 0.18,
+          cy - cellSize * 0.2,
+          cellSize * 0.36,
+          cellSize * 0.4
+        );
+        ctx.strokeRect(
+          cx - cellSize * 0.1,
+          cy - cellSize * 0.12,
+          cellSize * 0.2,
+          cellSize * 0.24
+        );
+        continue;
+      }
+    }
+  }
+
+  ctx.restore();
 }
 
 function renderChart() {
@@ -1049,6 +1295,7 @@ function syncInputs() {
   maxAgeOut.textContent = String(config.maxAge);
   densityInput.value = String(config.density);
   densityOut.textContent = String(config.density);
+  worldPresetSelect.value = config.presetId;
 }
 
 function wireEvents() {
@@ -1087,11 +1334,15 @@ function wireEvents() {
     densityOut.textContent = event.target.value;
   });
 
+  worldPresetSelect.addEventListener("change", (event) => {
+    config.presetId = event.target.value;
+    updatePresetDescription();
+    stopSimulation();
+    resetSimulation();
+  });
+
   showGridInput.addEventListener("change", (event) => {
     state.visual.grid = event.target.checked;
-  });
-  showTrailsInput.addEventListener("change", (event) => {
-    state.visual.trails = event.target.checked;
   });
   showSignalsInput.addEventListener("change", (event) => {
     state.visual.signals = event.target.checked;
@@ -1134,6 +1385,8 @@ function wireEvents() {
 
 function init() {
   setSeed(String(Date.now()));
+  populatePresets();
+  updatePresetDescription();
   syncInputs();
   resetSimulation();
   wireEvents();

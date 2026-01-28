@@ -309,6 +309,15 @@ input[type="range"] {
   accent-color: var(--accent);
 }
 
+.select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 26, 24, 0.2);
+  background: white;
+  font-family: var(--sans);
+}
+
 .toggles {
   border: 1px dashed rgba(15, 26, 24, 0.2);
   border-radius: 12px;

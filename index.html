@@ -81,6 +81,11 @@
             </div>
           </div>
           <div class="field">
+            <label for="worldPreset">World preset</label>
+            <select id="worldPreset" class="select"></select>
+            <p id="worldPresetDesc" class="muted"></p>
+          </div>
+          <div class="field">
             <label for="maxAge">Max age</label>
             <div class="range-row">
               <input id="maxAge" type="range" min="40" max="200" value="100" />
@@ -106,7 +111,6 @@
           <fieldset class="toggles">
             <legend>Visual overlays</legend>
             <label class="toggle"><input type="checkbox" id="showGrid" checked /> Grid</label>
-            <label class="toggle"><input type="checkbox" id="showTrails" checked /> Trails</label>
             <label class="toggle"><input type="checkbox" id="showSignals" checked /> Signals</label>
           </fieldset>
         </div>
