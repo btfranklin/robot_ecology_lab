@@ -215,11 +215,15 @@ body::before {
   display: inline-block;
 }
 
-.swatch.field { background: #1a3b2f; }
-.swatch.hill { background: #3a2f15; }
-.swatch.building { background: #262626; }
-.swatch.master { background: #143a48; }
+.swatch.field { background: #2f6b4f; }
+.swatch.hill { background: #8a6b3d; }
+.swatch.building { background: #4c4c4c; }
+.swatch.master { background: #1f6f8b; }
 .swatch.robot { background: linear-gradient(135deg, #3ddad7, #f2c14e); }
+
+.swatch {
+  border: 1px solid rgba(15, 26, 24, 0.2);
+}
 
 .bot-popover {
   position: fixed;
@@ -380,6 +384,21 @@ dialog::backdrop {
   margin: 0 0 6px;
 }
 
+.robot-portrait {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.robot-canvas {
+  width: 160px;
+  height: 120px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 26, 24, 0.15);
+  background: #f1f5f2;
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -410,6 +429,9 @@ dialog::backdrop {
   padding: 6px 8px;
   font-size: 0.75rem;
   color: var(--ink-2);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .gene-chip strong {
