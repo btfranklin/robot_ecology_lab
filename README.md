@@ -1,5 +1,7 @@
 # Robot Ecology Lab
 
+![Robot Ecology Lab banner](https://raw.githubusercontent.com/btfranklin/robot_ecology_lab/main/.github/social%20preview/robot_ecology_lab_social_preview.jpg "Robot Ecology Lab")
+
 **Robot Ecology Lab** is a browser-based “laboratory simulation” where a population of fanciful robots evolves and collapses in a 50×50 world.
 
 This project is a modern, visual port of an ANSI‑C text simulation I originally wrote in 1996. It has been rebuilt as a single-page canvas app (no build step, no dependencies).
