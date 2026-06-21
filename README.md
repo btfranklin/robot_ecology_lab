@@ -6,6 +6,8 @@
 
 This project is a modern, visual port of an ANSI‑C text simulation I originally wrote in 1996. It has been rebuilt as a single-page canvas app (no build step, no dependencies).
 
+Live demo: https://btfranklin.github.io/robot_ecology_lab/
+
 Robots have 16 genes that shape derived traits (mobility, combat, sensing, efficiency, energy capacity, etc.). Each cycle they decide whether to rest, move, mine, mate, or fight—balancing power consumption against survival and fitness.
 
 The original version was intended to illustrate a genetic algorithm in a more interesting form than was typical at the time. It’s a toy model meant for exploration and fun, not a scientific ecology simulator. Because it was written in ANSI-C, I was even able to get it to compile and run on my university's IBM System/360 mainframe, as well as my own PC, with no changes.
